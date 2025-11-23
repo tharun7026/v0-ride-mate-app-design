@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Fuel, Hotel, UtensilsCrossed, Wrench, ZoomIn, ZoomOut, ChevronRight } from "lucide-react"
-import BreakpointMap from "@/components/ui/breakpoint-map"
+import { Fuel, Hotel, UtensilsCrossed, Wrench, ChevronRight } from "lucide-react"
+import GoogleMapsDirections from "@/components/ui/google-maps-directions"
 
 interface BreakpointOverviewScreenProps {
   routeData: any
@@ -24,7 +24,6 @@ export default function BreakpointOverviewScreen({
 }: BreakpointOverviewScreenProps) {
   const [selectedDay, setSelectedDay] = useState(0)
   const [activeFilters, setActiveFilters] = useState<string[]>(["fuel", "hotels"])
-  const [mapZoom, setMapZoom] = useState(1)
 
   const toggleFilter = (filterId: string) => {
     setActiveFilters((prev) => (prev.includes(filterId) ? prev.filter((f) => f !== filterId) : [...prev, filterId]))
@@ -32,32 +31,30 @@ export default function BreakpointOverviewScreen({
 
   const currentBreakpoint = routeData.breakpoints[selectedDay]
 
+  // Calculate total distance and days from breakpoints
+  const totalDistance = routeData.breakpoints
+    ? routeData.breakpoints.reduce((sum: number, bp: any) => sum + (bp.distance || 0), 0)
+    : 0
+  const totalDays = routeData.breakpoints ? routeData.breakpoints.length : 0
+
   return (
     <div className="w-full min-h-screen flex flex-col bg-background">
       <div className="border-b border-border bg-card px-6 md:px-12 py-6">
         <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">Your Route Overview</h1>
-        <p className="text-sm text-muted-foreground">Total: 1100 km • 3 days</p>
+        <p className="text-sm text-muted-foreground">
+          Total: {Math.round(totalDistance)} km • {totalDays} {totalDays === 1 ? "day" : "days"}
+        </p>
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 md:p-12 overflow-auto">
         {/* Map section */}
         <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden relative group min-h-96">
-          <BreakpointMap breakpoint={currentBreakpoint} zoom={mapZoom} filters={activeFilters} />
-
-          <div className="absolute bottom-4 right-4 flex gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => setMapZoom((z) => Math.min(z + 0.2, 2))}
-              className="p-2 bg-primary text-primary-foreground rounded-lg hover:shadow-lg transition-all active:scale-95"
-            >
-              <ZoomIn size={20} />
-            </button>
-            <button
-              onClick={() => setMapZoom((z) => Math.max(z - 0.2, 1))}
-              className="p-2 bg-muted text-foreground rounded-lg hover:shadow-lg transition-all active:scale-95"
-            >
-              <ZoomOut size={20} />
-            </button>
-          </div>
+          <GoogleMapsDirections
+            origin={routeData?.source || ""}
+            destination={routeData?.destination || ""}
+            zoom={10}
+            className="min-h-96"
+          />
         </div>
 
         {/* Sidebar */}
@@ -87,58 +84,67 @@ export default function BreakpointOverviewScreen({
           </div>
 
           <div className="bg-card border border-border rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-4">Daily Segments</h3>
-            <div className="space-y-2">
-              {routeData.breakpoints.map((bp: any, idx: number) => (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedDay(idx)}
-                  className={`w-full p-3 rounded-lg text-left transition-all text-sm ${
-                    selectedDay === idx
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-foreground border border-border hover:border-primary"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold">Day {bp.day}</p>
-                      <p className="text-xs opacity-75">{bp.city}</p>
-                    </div>
-                    <ChevronRight size={16} />
-                  </div>
-                </button>
-              ))}
+  <h3 className="text-sm font-semibold text-foreground mb-4">Daily Segments</h3>
+  <div className="space-y-2">
+    {routeData.breakpoints.map((bp: any, idx: number) => {
+      const isSelected = selectedDay === idx;
+      return (
+        <div key={idx} className="flex flex-col">
+          {/* Day button */}
+          <button
+            onClick={() => setSelectedDay(isSelected ? -1 : idx)} // toggle
+            className={`w-full p-3 rounded-lg text-left transition-all text-sm flex justify-between items-start bg-muted text-foreground border border-border hover:border-primary`}
+          >
+            <div>
+              <p className="font-semibold">Day {bp.day}</p>
+              <p className="text-xs opacity-75">{bp.city}</p>
             </div>
-          </div>
+            <ChevronRight
+              size={16}
+              className={`transition-transform ${isSelected ? "rotate-90" : ""}`}
+            />
+          </button>
 
-          <div className="bg-card border border-border rounded-xl p-4">
-            <h3 className="font-semibold text-foreground mb-4">Day {currentBreakpoint.day} Details</h3>
-            <div className="space-y-3 text-sm">
+          {/* Expanded details */}
+          {isSelected && (
+            <div className="mt-2 p-3 bg-muted border border-border rounded-lg text-sm space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Distance</span>
-                <span className="font-semibold text-foreground">{currentBreakpoint.distance} km</span>
+                <span className="font-semibold text-foreground">{bp.distance} km</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Duration</span>
-                <span className="font-semibold text-foreground">{currentBreakpoint.hours}h</span>
+                <span className="font-semibold text-foreground">{bp.hours}h</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Fuel Needed</span>
-                <span className="font-semibold text-foreground">{Math.round(currentBreakpoint.distance / 20)} L</span>
+                <span className="font-semibold text-foreground">{Math.round(bp.distance / 20)} L</span>
               </div>
+              <button
+                onClick={() => onSelectBreakpoint(idx)}
+                className="w-full py-2 bg-primary text-primary-foreground font-semibold rounded-lg hover:shadow-lg transition-all active:scale-95 mt-2"
+              >
+                View Details
+              </button>
             </div>
-          </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+</div>
+
 
           <div className="space-y-2">
-            <button
+            {/* <button
               onClick={() => onSelectBreakpoint(selectedDay)}
               className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:shadow-lg transition-all active:scale-95"
             >
               View Details
-            </button>
+            </button> */}
             <button
               onClick={onSummary}
-              className="w-full py-3 bg-muted border border-border text-foreground font-semibold rounded-lg hover:border-primary transition-all active:scale-95"
+              className="w-full py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:shadow-lg transition-all active:scale-95"
             >
               Trip Summary
             </button>

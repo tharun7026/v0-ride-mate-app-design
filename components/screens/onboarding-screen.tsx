@@ -32,6 +32,10 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     if (currentSlide < slides.length - 1) {
       setCurrentSlide(currentSlide + 1)
     } else {
+      // Store onboarding completion in localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem("onboardingCompleted", "true")
+      }
       onComplete()
     }
   }

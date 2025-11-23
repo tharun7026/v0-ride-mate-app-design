@@ -2,45 +2,70 @@
 
 import { useEffect, useState } from "react"
 import { MapPin } from "lucide-react"
+import { calculateBreakpoints, type Breakpoint } from "@/lib/google-maps-api"
 
 interface RouteGenerationScreenProps {
   tripData: any
   onComplete: (data: any) => void
 }
 
-const breakpoints = [
-  { day: 1, city: "Jhansi", distance: 385, hours: 6.5 },
-  { day: 2, city: "Indore", distance: 290, hours: 4.5 },
-  { day: 3, city: "Panaji", distance: 425, hours: 7 },
-]
-
 export default function RouteGenerationScreen({ tripData, onComplete }: RouteGenerationScreenProps) {
   const [animatedBreakpoints, setAnimatedBreakpoints] = useState<number[]>([])
   const [routeComplete, setRouteComplete] = useState(false)
+  const [breakpoints, setBreakpoints] = useState<Breakpoint[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    breakpoints.forEach((_, idx) => {
+    // Fetch real route data from Google Maps API
+    const fetchRouteData = async () => {
+      setIsLoading(true)
+      try {
+        const calculatedBreakpoints = await calculateBreakpoints(
+          tripData.source,
+          tripData.destination,
+          tripData.dailyDistance || 400
+        )
+        setBreakpoints(calculatedBreakpoints)
+      } catch (error) {
+        console.error("Error fetching route data:", error)
+        // Fallback to empty array - will show loading state
+        setBreakpoints([])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (tripData?.source && tripData?.destination) {
+      fetchRouteData()
+    }
+  }, [tripData])
+
+  useEffect(() => {
+    // Only animate breakpoints once they're loaded
+    if (!isLoading && breakpoints.length > 0) {
+      breakpoints.forEach((_, idx) => {
+        setTimeout(
+          () => {
+            setAnimatedBreakpoints((prev) => [...prev, idx])
+          },
+          500 + idx * 600,
+        )
+      })
+
       setTimeout(
         () => {
-          setAnimatedBreakpoints((prev) => [...prev, idx])
+          setRouteComplete(true)
+          setTimeout(() => {
+            onComplete({
+              ...tripData,
+              breakpoints,
+            })
+          }, 1000)
         },
-        500 + idx * 600,
+        500 + breakpoints.length * 600 + 800,
       )
-    })
-
-    setTimeout(
-      () => {
-        setRouteComplete(true)
-        setTimeout(() => {
-          onComplete({
-            ...tripData,
-            breakpoints,
-          })
-        }, 1000)
-      },
-      500 + breakpoints.length * 600 + 800,
-    )
-  }, [tripData, onComplete])
+    }
+  }, [isLoading, breakpoints, tripData, onComplete])
 
   return (
     <div className="w-full min-h-screen flex flex-col items-center justify-center bg-background relative overflow-hidden px-6 py-12">
@@ -52,8 +77,16 @@ export default function RouteGenerationScreen({ tripData, onComplete }: RouteGen
       <div className="relative z-10 flex flex-col items-center justify-center gap-12 max-w-2xl w-full">
         <div className="text-center animate-slide-up">
           <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-3">Finding Your Ideal Stops</h2>
-          <p className="text-muted-foreground text-lg">Optimizing route with hotels, fuel, and restaurants...</p>
+          <p className="text-muted-foreground text-lg">
+            {isLoading ? "Fetching route data from Google Maps..." : "Optimizing route with hotels, fuel, and restaurants..."}
+          </p>
         </div>
+
+        {isLoading && (
+          <div className="w-full flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          </div>
+        )}
 
         <div className="w-full space-y-3">
           {breakpoints.map((bp, idx) => (

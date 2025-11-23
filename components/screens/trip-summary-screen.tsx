@@ -13,7 +13,30 @@ export default function TripSummaryScreen({ routeData, onStartNew }: TripSummary
   const totalFuel = Math.round(totalDistance / 20)
 
   const handleSave = () => {
-    alert("✓ Trip saved successfully!")
+    // Save route using the route storage utility
+    if (typeof window !== "undefined") {
+      const { createRoute } = require("@/lib/route-storage")
+      const totalDays = routeData.breakpoints.length
+      const totalHours = routeData.breakpoints.reduce((sum: number, bp: any) => sum + (bp.hours || 0), 0)
+
+      createRoute({
+        name: `${routeData.source} to ${routeData.destination}`,
+        description: `A ${totalDays}-day journey from ${routeData.source} to ${routeData.destination}`,
+        source: routeData.source,
+        destination: routeData.destination,
+        breakpoints: routeData.breakpoints || [],
+        totalDistance,
+        totalDays,
+        totalHours,
+        totalFuel,
+        dailyDistance: routeData.dailyDistance || 400,
+        hotelPreference: routeData.hotelPreference || "3-star",
+        vehicleType: routeData.vehicleType,
+        transportMode: routeData.vehicleType,
+      })
+
+      alert("✓ Trip saved successfully!")
+    }
   }
 
   const handleShare = () => {
