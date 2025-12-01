@@ -11,10 +11,16 @@ import TripSummaryScreen from "@/components/screens/trip-summary-screen"
 import ProfileScreen from "@/components/screens/profile-screen"
 import SettingsScreen from "@/components/screens/settings-screen"
 import MyRoutesScreen from "@/components/screens/my-routes-screen"
+import AuthScreen from "@/components/screens/auth-screen"
 import AppLayout from "@/components/layout/app-layout"
-import { initializeRoutesStorage } from "@/lib/route-storage"
+import { useAuth } from "@/lib/auth-context"
+import { initializeRoutesStorage } from "@/lib/route-storage-supabase"
+// Import utilities to expose them to window
+import "@/lib/migrate-to-supabase"
+import "@/lib/test-supabase-connection"
 
 export default function Home() {
+  const { user, loading } = useAuth()
   const [currentScreen, setCurrentScreen] = useState<string>("splash")
   const [routeData, setRouteData] = useState<any>(null)
   const [selectedBreakpoint, setSelectedBreakpoint] = useState<number | null>(null)
@@ -23,7 +29,7 @@ export default function Home() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       // Initialize routes storage (migrate old format if needed)
-      initializeRoutesStorage()
+      initializeRoutesStorage().catch(console.error)
 
       const onboardingCompleted = localStorage.getItem("onboardingCompleted")
       if (onboardingCompleted === "true") {
@@ -40,6 +46,26 @@ export default function Home() {
       return () => window.removeEventListener("navigate", handleNavigate as EventListener)
     }
   }, [])
+
+  // Show auth screen if not authenticated (after loading)
+  // Allow splash and onboarding without auth, but require auth for main app
+  const requiresAuth = !["splash", "onboarding", "auth"].includes(currentScreen)
+  
+  if (loading) {
+    return (
+      <div className="w-full min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show auth screen if user is not authenticated and trying to access protected screens
+  if (!user && requiresAuth) {
+    return <AuthScreen />
+  }
 
   const handleNavigate = (screen: string, data?: any) => {
     setCurrentScreen(screen)
@@ -59,7 +85,7 @@ export default function Home() {
   }
 
   // Screens that should not use the app layout (full-screen experiences)
-  const fullScreenScreens = ["splash", "onboarding", "route-generation"]
+  const fullScreenScreens = ["splash", "onboarding", "route-generation", "auth"]
 
   const shouldUseLayout = !fullScreenScreens.includes(currentScreen)
 
@@ -104,6 +130,8 @@ export default function Home() {
         return <ProfileScreen />
       case "settings":
         return <SettingsScreen />
+      case "auth":
+        return <AuthScreen />
       default:
         return <TripPlannerScreen onGenerate={(data) => handleNavigate("route-generation", { routeData: data })} />
     }

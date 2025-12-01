@@ -1,6 +1,9 @@
 "use client"
 
+import { useState } from "react"
 import { Share2, Download, MapPin, Calendar, Fuel, Hotel } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { createRoute } from "@/lib/route-storage-supabase"
 
 interface TripSummaryScreenProps {
   routeData: any
@@ -8,18 +11,33 @@ interface TripSummaryScreenProps {
 }
 
 export default function TripSummaryScreen({ routeData, onStartNew }: TripSummaryScreenProps) {
+  const { user } = useAuth()
   const totalDistance = routeData.breakpoints.reduce((sum: number, bp: any) => sum + bp.distance, 0)
   const totalHours = routeData.breakpoints.reduce((sum: number, bp: any) => sum + bp.hours, 0)
   const totalFuel = Math.round(totalDistance / 20)
+  const [isSaving, setIsSaving] = useState(false)
 
-  const handleSave = () => {
-    // Save route using the route storage utility
-    if (typeof window !== "undefined") {
-      const { createRoute } = require("@/lib/route-storage")
+  const handleSave = async () => {
+    if (isSaving) return
+
+    setIsSaving(true)
+    try {
+      // Check authentication first
+      if (!user) {
+        const shouldSignIn = confirm(
+          "⚠️ Authentication Required\n\nYou need to sign in to save routes. Would you like to sign in now?"
+        )
+        if (shouldSignIn && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("navigate", { detail: { screen: "auth" } }))
+        }
+        setIsSaving(false)
+        return
+      }
+
       const totalDays = routeData.breakpoints.length
-      const totalHours = routeData.breakpoints.reduce((sum: number, bp: any) => sum + (bp.hours || 0), 0)
+      const calculatedTotalHours = routeData.breakpoints.reduce((sum: number, bp: any) => sum + (bp.hours || 0), 0)
 
-      createRoute({
+      const savedRoute = await createRoute({
         name: `${routeData.source} to ${routeData.destination}`,
         description: `A ${totalDays}-day journey from ${routeData.source} to ${routeData.destination}`,
         source: routeData.source,
@@ -27,7 +45,7 @@ export default function TripSummaryScreen({ routeData, onStartNew }: TripSummary
         breakpoints: routeData.breakpoints || [],
         totalDistance,
         totalDays,
-        totalHours,
+        totalHours: calculatedTotalHours,
         totalFuel,
         dailyDistance: routeData.dailyDistance || 400,
         hotelPreference: routeData.hotelPreference || "3-star",
@@ -35,7 +53,31 @@ export default function TripSummaryScreen({ routeData, onStartNew }: TripSummary
         transportMode: routeData.vehicleType,
       })
 
-      alert("✓ Trip saved successfully!")
+      console.log("Route saved successfully:", savedRoute)
+      alert("✓ Trip saved successfully to Supabase!")
+    } catch (error: any) {
+      console.error("Error saving trip:", error)
+      
+      let errorMessage = "Failed to save trip."
+      let suggestions = ""
+
+      if (error.message?.includes("authenticated")) {
+        errorMessage = "Authentication required"
+        suggestions = "Please sign in to Supabase first."
+      } else if (error.message?.includes("relation") || error.message?.includes("table")) {
+        errorMessage = "Database table not found"
+        suggestions = "Please run the SQL migration to create the routes table."
+      } else if (error.message?.includes("RLS") || error.message?.includes("policy")) {
+        errorMessage = "Row Level Security policy violation"
+        suggestions = "Please check your RLS policies or sign in."
+      } else {
+        errorMessage = error.message || "Unknown error"
+        suggestions = "Please check:\n1. Supabase credentials in .env.local\n2. You are signed in\n3. The routes table exists"
+      }
+
+      alert(`✗ Error: ${errorMessage}\n\n${suggestions}\n\nCheck browser console for details.`)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -122,9 +164,10 @@ export default function TripSummaryScreen({ routeData, onStartNew }: TripSummary
       <div className="border-t border-border bg-card px-6 md:px-12 py-6 space-y-3">
         <button
           onClick={handleSave}
-          className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-lg hover:shadow-lg transition-all active:scale-95"
+          disabled={isSaving}
+          className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-lg hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Save Trip Plan
+          {isSaving ? "Saving..." : "Save Trip Plan"}
         </button>
         <div className="grid grid-cols-2 gap-3">
           <button

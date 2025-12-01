@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Menu, X, Home, Map, Settings, User, LogOut, Bell } from "lucide-react"
 import { usePathname } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -17,28 +18,36 @@ const navigation = [
 ]
 
 export default function AppLayout({ children, currentScreen }: AppLayoutProps) {
+  const { user, signOut } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [userInfo, setUserInfo] = useState({ name: "User Name", email: "user@example.com" })
 
-  // Load user info from profile
+  // Load user info from profile and Supabase auth
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("userProfile")
+      let name = "User Name"
+      let email = user?.email || "user@example.com"
+      
       if (saved) {
         try {
           const profile = JSON.parse(saved)
-          const name = profile.firstName && profile.lastName
+          name = profile.firstName && profile.lastName
             ? `${profile.firstName} ${profile.lastName}`
-            : profile.firstName || profile.lastName || "User Name"
-          const email = profile.email || "user@example.com"
-          setUserInfo({ name, email })
+            : profile.firstName || profile.lastName || user?.email?.split("@")[0] || "User Name"
+          email = profile.email || user?.email || email
         } catch (error) {
           console.error("Error loading user info:", error)
         }
+      } else if (user?.email) {
+        // Use email username if no profile saved
+        name = user.email.split("@")[0]
       }
+      
+      setUserInfo({ name, email })
     }
-  }, [currentScreen]) // Reload when screen changes (profile might have been updated)
+  }, [currentScreen, user]) // Reload when screen changes or user changes
 
   useEffect(() => {
     const checkMobile = () => {
@@ -150,14 +159,20 @@ export default function AppLayout({ children, currentScreen }: AppLayoutProps) {
             </div>
           </button>
           <button
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                localStorage.removeItem("userProfile")
-                localStorage.removeItem("appSettings")
-                localStorage.removeItem("savedRoutes")
-                localStorage.removeItem("onboardingCompleted")
-                alert("Signed out successfully!")
-                window.location.reload()
+            onClick={async () => {
+              try {
+                await signOut()
+                if (typeof window !== "undefined") {
+                  // Clear local storage
+                  localStorage.removeItem("userProfile")
+                  localStorage.removeItem("appSettings")
+                  localStorage.removeItem("savedRoutes")
+                  // Navigate to auth screen
+                  window.dispatchEvent(new CustomEvent("navigate", { detail: { screen: "auth" } }))
+                }
+              } catch (error) {
+                console.error("Error signing out:", error)
+                alert("Error signing out. Please try again.")
               }
             }}
             className="w-full mt-2 flex items-center gap-3 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"

@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { User, Mail, Phone, MapPin, Calendar, Camera, Save } from "lucide-react"
 import Container from "@/components/layout/container"
 import Grid from "@/components/layout/grid"
-import { getAllRoutes } from "@/lib/route-storage"
+import { useAuth } from "@/lib/auth-context"
+import { getAllRoutes, createRoute } from "@/lib/route-storage-supabase"
 
 interface UserProfile {
   // Basic Information
@@ -54,10 +55,11 @@ interface UserProfile {
 }
 
 export default function ProfileScreen() {
+  const { user } = useAuth()
   const [profile, setProfile] = useState<Partial<UserProfile>>({
     firstName: "",
     lastName: "",
-    email: "",
+    email: user?.email || "",
     phone: "",
     dateOfBirth: "",
     location: "",
@@ -82,13 +84,13 @@ export default function ProfileScreen() {
     promotionalEmails: false,
     totalTrips: 0,
     totalDistance: 0,
-    memberSince: new Date().toISOString(),
+    memberSince: user?.created_at || new Date().toISOString(),
     lastActive: new Date().toISOString(),
   })
 
   const [isEditing, setIsEditing] = useState(false)
 
-  // Load profile from localStorage
+  // Load profile from localStorage and sync with Supabase user
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("userProfile")
@@ -100,22 +102,35 @@ export default function ProfileScreen() {
           console.error("Error loading profile:", error)
         }
       }
+      
+      // Update email and memberSince from Supabase user
+      if (user) {
+        setProfile((prev) => ({
+          ...prev,
+          email: user.email || prev.email,
+          memberSince: user.created_at || prev.memberSince,
+        }))
+      }
     }
-  }, [])
+  }, [user])
 
   // Calculate stats from saved routes
   useEffect(() => {
     if (typeof window !== "undefined") {
-      try {
-        const savedRoutes = getAllRoutes()
-        const totalTrips = savedRoutes.length
-        const totalDistance = savedRoutes.reduce((sum: number, route: any) => sum + (route.totalDistance || 0), 0)
-        setProfile((prev) => ({ ...prev, totalTrips, totalDistance }))
-      } catch (error) {
-        console.error("Error loading route statistics:", error)
-        // Set defaults if there's an error
-        setProfile((prev) => ({ ...prev, totalTrips: 0, totalDistance: 0 }))
+      const loadStats = async () => {
+        try {
+          const { getAllRoutes } = await import("@/lib/route-storage-supabase")
+          const savedRoutes = await getAllRoutes()
+          const totalTrips = savedRoutes.length
+          const totalDistance = savedRoutes.reduce((sum: number, route: any) => sum + (route.totalDistance || 0), 0)
+          setProfile((prev) => ({ ...prev, totalTrips, totalDistance }))
+        } catch (error) {
+          console.error("Error loading route statistics:", error)
+          // Set defaults if there's an error
+          setProfile((prev) => ({ ...prev, totalTrips: 0, totalDistance: 0 }))
+        }
       }
+      loadStats()
     }
   }, [])
 

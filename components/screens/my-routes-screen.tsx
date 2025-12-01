@@ -6,12 +6,14 @@ import Container from "@/components/layout/container"
 import Grid from "@/components/layout/grid"
 import {
   getAllRoutes,
+  getRouteById,
   deleteRoute,
   toggleFavorite,
   toggleArchive,
   incrementRouteViews,
   type RouteData,
-} from "@/lib/route-storage"
+} from "@/lib/route-storage-supabase"
+import type { RouteBreakpoint } from "@/lib/route-storage"
 import EditRouteScreen from "./edit-route-screen"
 
 export default function MyRoutesScreen() {
@@ -22,11 +24,16 @@ export default function MyRoutesScreen() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showArchived, setShowArchived] = useState(false)
 
-  // Load saved routes from localStorage
-  const loadRoutes = () => {
-    const routes = getAllRoutes()
-    const filtered = showArchived ? routes : routes.filter((r) => !r.isArchived)
-    setSavedRoutes(filtered)
+  // Load saved routes from Supabase
+  const loadRoutes = async () => {
+    try {
+      const routes = await getAllRoutes()
+      const filtered = showArchived ? routes : routes.filter((r: RouteData) => !r.isArchived)
+      setSavedRoutes(filtered)
+    } catch (error) {
+      console.error("Error loading routes:", error)
+      setSavedRoutes([])
+    }
   }
 
   useEffect(() => {
@@ -37,34 +44,51 @@ export default function MyRoutesScreen() {
     return () => window.removeEventListener("focus", handleFocus)
   }, [showArchived])
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this route? This action cannot be undone.")) {
-      if (deleteRoute(id)) {
-        loadRoutes()
-        if (selectedRoute?.id === id) {
-          setSelectedRoute(null)
+      try {
+        const success = await deleteRoute(id)
+        if (success) {
+          await loadRoutes()
+          if (selectedRoute?.id === id) {
+            setSelectedRoute(null)
+          }
+          alert("Route deleted successfully!")
+        } else {
+          alert("Failed to delete route. Please try again.")
         }
-        alert("Route deleted successfully!")
+      } catch (error) {
+        console.error("Error deleting route:", error)
+        alert("Failed to delete route. Please try again.")
       }
     }
   }
 
-  const handleView = (route: RouteData) => {
-    incrementRouteViews(route.id)
-    setSelectedRoute(route)
+  const handleView = async (route: RouteData) => {
+    try {
+      await incrementRouteViews(route.id)
+      setSelectedRoute(route)
+    } catch (error) {
+      console.error("Error incrementing views:", error)
+      setSelectedRoute(route)
+    }
   }
 
   const handleEdit = (routeId: string) => {
     setEditingRouteId(routeId)
   }
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     setEditingRouteId(null)
-    loadRoutes()
+    await loadRoutes()
     // Reload selected route if it was the one being edited
     if (selectedRoute && editingRouteId === selectedRoute.id) {
-      const updated = getAllRoutes().find((r) => r.id === selectedRoute.id)
-      if (updated) setSelectedRoute(updated)
+      try {
+        const updated = await getRouteById(selectedRoute.id)
+        if (updated) setSelectedRoute(updated)
+      } catch (error) {
+        console.error("Error reloading route:", error)
+      }
     }
   }
 
@@ -72,25 +96,33 @@ export default function MyRoutesScreen() {
     setEditingRouteId(null)
   }
 
-  const handleToggleFavorite = (id: string) => {
-    toggleFavorite(id)
-    loadRoutes()
-    if (selectedRoute?.id === id) {
-      const updated = getAllRoutes().find((r) => r.id === id)
-      if (updated) setSelectedRoute(updated)
+  const handleToggleFavorite = async (id: string) => {
+    try {
+      await toggleFavorite(id)
+      await loadRoutes()
+      if (selectedRoute?.id === id) {
+        const updated = await getRouteById(id)
+        if (updated) setSelectedRoute(updated)
+      }
+    } catch (error) {
+      console.error("Error toggling favorite:", error)
     }
   }
 
-  const handleToggleArchive = (id: string) => {
-    toggleArchive(id)
-    loadRoutes()
-    if (selectedRoute?.id === id) {
-      setSelectedRoute(null)
+  const handleToggleArchive = async (id: string) => {
+    try {
+      await toggleArchive(id)
+      await loadRoutes()
+      if (selectedRoute?.id === id) {
+        setSelectedRoute(null)
+      }
+    } catch (error) {
+      console.error("Error toggling archive:", error)
     }
   }
 
   // Filter routes based on search query
-  const filteredRoutes = savedRoutes.filter((route) => {
+  const filteredRoutes = savedRoutes.filter((route: RouteData) => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
     return (
@@ -98,7 +130,7 @@ export default function MyRoutesScreen() {
       route.source.toLowerCase().includes(query) ||
       route.destination.toLowerCase().includes(query) ||
       route.description?.toLowerCase().includes(query) ||
-      route.tags?.some((tag) => tag.toLowerCase().includes(query))
+      route.tags?.some((tag: string) => tag.toLowerCase().includes(query))
     )
   })
 
@@ -181,7 +213,7 @@ export default function MyRoutesScreen() {
           <div className="bg-card border border-border rounded-xl p-6 lg:p-8 mb-6">
             <h2 className="text-xl md:text-2xl font-bold text-foreground mb-6">Route Details</h2>
             <div className="space-y-3">
-              {selectedRoute.breakpoints.map((bp, idx) => (
+              {selectedRoute.breakpoints.map((bp: RouteBreakpoint, idx: number) => (
                 <div
                   key={idx}
                   className="flex items-center justify-between p-4 bg-muted rounded-lg hover:border-primary transition-all border border-transparent"
@@ -219,7 +251,7 @@ export default function MyRoutesScreen() {
                 <div>
                   <h3 className="text-lg font-bold text-foreground mb-3">Tags</h3>
                   <div className="flex flex-wrap gap-2">
-                    {selectedRoute.tags.map((tag, idx) => (
+                    {selectedRoute.tags.map((tag: string, idx: number) => (
                       <span key={idx} className="px-3 py-1 bg-muted text-foreground rounded-full text-sm">
                         {tag}
                       </span>
@@ -274,10 +306,14 @@ export default function MyRoutesScreen() {
               Edit Route
             </button>
             <button
-              onClick={() => {
-                handleToggleFavorite(selectedRoute.id)
-                const updated = getAllRoutes().find((r) => r.id === selectedRoute.id)
-                if (updated) setSelectedRoute(updated)
+              onClick={async () => {
+                await handleToggleFavorite(selectedRoute.id)
+                try {
+                  const updated = await getRouteById(selectedRoute.id)
+                  if (updated) setSelectedRoute(updated)
+                } catch (error) {
+                  console.error("Error reloading route:", error)
+                }
               }}
               className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
                 selectedRoute.isFavorite
